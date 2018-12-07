@@ -25,16 +25,21 @@ require (
 	github.com/duosecurity/duo_api_golang v0.0.0-20181024123116-92fea9203dbc // indirect
 	github.com/elazarl/go-bindata-assetfs v1.0.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
+	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-ldap/ldap v2.5.1+incompatible // indirect
 	github.com/go-sql-driver/mysql v1.4.1 // indirect
 	github.com/go-test/deep v1.0.1 // indirect
 	github.com/gocql/gocql v0.0.0-20181117210152-33c0e89ca93a // indirect
 	github.com/gogo/protobuf v1.1.1 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
+	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
 	github.com/google/go-cmp v0.2.0 // indirect
 	github.com/google/go-github v17.0.0+incompatible // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
+	github.com/google/gofuzz v0.0.0-20170612174753-24818f796faf // indirect
+	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect
+	github.com/gregjones/httpcache v0.0.0-20181110185634-c63ab54fda8f // indirect
 	github.com/hashicorp/consul v1.4.0 // indirect
 	github.com/hashicorp/go-hclog v0.0.0-20181001195459-61d530d6c27f // indirect
 	github.com/hashicorp/go-immutable-radix v1.0.0 // indirect
@@ -51,7 +56,9 @@ require (
 	github.com/hashicorp/serf v0.8.1 // indirect
 	github.com/hashicorp/vault v0.11.5
 	github.com/hashicorp/vault-plugin-secrets-kv v0.0.0-20181106190520-2236f141171e // indirect
+	github.com/imdario/mergo v0.3.6 // indirect
 	github.com/jefferai/jsonx v0.0.0-20160721235117-9cc31c3135ee // indirect
+	github.com/json-iterator/go v1.1.5 // indirect
 	github.com/keybase/go-crypto v0.0.0-20181031135447-f919bfda4fc1 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/lib/pq v1.0.0 // indirect
@@ -61,12 +68,15 @@ require (
 	github.com/mitchellh/go-homedir v1.0.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.1.2 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/ory/dockertest v3.3.2+incompatible // indirect
 	github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
+	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
 	github.com/pkg/errors v0.8.0 // indirect
 	github.com/prometheus/client_golang v0.9.1 // indirect
@@ -75,8 +85,10 @@ require (
 	github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d // indirect
 	github.com/ryanuber/go-glob v0.0.0-20170128012129-256dc444b735 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
-	github.com/sirupsen/logrus v1.2.0 // indirect
+	github.com/sirupsen/logrus v1.2.0
+	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926 // indirect
+	github.com/urfave/cli v1.20.0
 	golang.org/x/crypto v0.0.0-20181112202954-3d3f9f413869 // indirect
 	golang.org/x/net v0.0.0-20181114220301-adae6a3d119a // indirect
 	golang.org/x/oauth2 v0.0.0-20181106182150-f42d05182288 // indirect
@@ -91,4 +103,9 @@ require (
 	gopkg.in/vmihailenco/msgpack.v2 v2.9.1 // indirect
 	gopkg.in/yaml.v2 v2.2.1 // indirect
 	gotest.tools v2.2.0+incompatible // indirect
+	k8s.io/api v0.0.0-20181117111259-46ad728b8d13
+	k8s.io/apimachinery v0.0.0-20181116115711-1b0702fe2927
+	k8s.io/client-go v9.0.0+incompatible
+	k8s.io/klog v0.1.0 // indirect
+	sigs.k8s.io/yaml v1.1.0 // indirect
 )
