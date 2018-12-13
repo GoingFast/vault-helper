@@ -18,9 +18,7 @@ import (
 
 	"github.com/urfave/cli"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	types "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -40,6 +38,7 @@ type commands struct {
 	AppRole        string
 	SecretSavePath string
 	CertPath       string
+	TokenSaveName  string
 }
 
 func init() {
@@ -59,48 +58,53 @@ func main() {
 		cli.BoolFlag{
 			Name:   "tokenrenew",
 			Usage:  "renew the token",
-			EnvVar: "VAULTHELPER_TOKEN_RENEW",
+			EnvVar: "HELPER_TOKEN_RENEW",
 		},
 		cli.BoolFlag{
 			Name:   "initcontainer",
 			Usage:  "pod is in init container",
-			EnvVar: "VAULTHELPER_INITCONTAINER",
+			EnvVar: "HELPER_INITCONTAINER",
 		},
 		cli.BoolFlag{
 			Name:   "tokensave",
 			Usage:  "save the vault token to k8s secret",
-			EnvVar: "VAULTHELPER_TOKEN_SAVE",
+			EnvVar: "HELPER_TOKEN_SAVE",
+		},
+		cli.StringFlag{
+			Name:   "tokensavename",
+			Usage:  "name of the vault token k8s secret",
+			EnvVar: "HELPER_TOKEN_SAVE_NAME",
 		},
 		cli.StringFlag{
 			Name:   "kubernetesrole",
 			Usage:  "vault kubernetes role",
-			EnvVar: "VAULTHELPER_KUBERNETES_ROLE",
+			EnvVar: "HELPER_KUBERNETES_ROLE",
 		},
 		cli.StringFlag{
 			Name:   "vaultaddr",
 			Usage:  "vault address",
-			EnvVar: "VAULTHELPER_VAULT_ADDR",
+			EnvVar: "HELPER_VAULT_ADDR",
 		},
 		cli.StringFlag{
-			Name: "vaultschema",
-
-			EnvVar: "VAULTHELPER_VAULT_SCHEMA",
+			Name:   "vaultschema",
+			Usage:  "vault address schema",
+			EnvVar: "HELPER_VAULT_SCHEMA",
 		},
 		cli.StringFlag{
 			Name:   "approle",
 			Usage:  "approle",
-			EnvVar: "VAULTHELPER_APPROLE",
+			EnvVar: "HELPER_APPROLE",
 		},
 		cli.StringFlag{
 			Name:   "secretsavepath",
 			Usage:  "path where to save all the variables",
-			EnvVar: "VAULTHELPER_SECRET_SAVEPATH",
+			EnvVar: "HELPER_SECRET_SAVE_PATH",
 			Value:  "/etc/vault/variables",
 		},
 		cli.StringFlag{
-			Name:   "certpath",
+			Name:   "capath",
 			Usage:  "location of vault ca certificates",
-			EnvVar: "VAULTHELPER_VAULT_CA_PATH",
+			EnvVar: "HELPER_CA_PATH",
 			Value:  "/etc/certs/vault.pem",
 		},
 	}
@@ -120,7 +124,8 @@ func run(c *cli.Context) error {
 		AppRole:        c.String("approle"),
 		TokenSave:      c.Bool("tokensave"),
 		SecretSavePath: c.String("secretsavepath"),
-		CertPath:       c.String("certpath"),
+		CertPath:       c.String("capath"),
+		TokenSaveName:  c.String("tokensavename"),
 	}
 	return cmds.exec()
 }
@@ -138,8 +143,9 @@ func (c commands) exec() error {
 		"approle":        d.cmds.AppRole,
 		"tokensave":      d.cmds.TokenSave,
 		"secretsavepath": d.cmds.SecretSavePath,
-		"certpath":       d.cmds.CertPath,
-	}).Info("Environment variables and flags")
+		"capath":         d.cmds.CertPath,
+		"tokensavename":  d.cmds.TokenSaveName,
+	}).Info()
 
 	err := d.getVaultToken()
 	if err != nil {
@@ -147,7 +153,10 @@ func (c commands) exec() error {
 	}
 
 	if c.TokenSave {
-		err := d.saveTokenToKubeSecret()
+		if c.TokenSaveName == "" {
+			c.TokenSaveName = fmt.Sprintf("%s-vault-token", c.KubernetesRole)
+		}
+		err := d.saveToken()
 		if err != nil {
 			return err
 		}
@@ -190,6 +199,19 @@ func (c commands) exec() error {
 
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigchan
+
+	if !c.InitContainer {
+		err = d.cleanupToken()
+		if err != nil {
+			return err
+		}
+	}
+
+	err = d.revokeAuthToken()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -293,6 +315,8 @@ func (d *data) getVaultToken() error {
 			return err
 		}
 
+		fmt.Println(sa, d.cmds.KubernetesRole)
+
 		var buf bytes.Buffer
 		err = json.NewEncoder(&buf).Encode(map[string]string{
 			"jwt":  sa,
@@ -384,18 +408,18 @@ func (d *data) getVaultToken() error {
 
 func (d *data) getSecrets() error {
 	d.client.SetToken(d.res.Auth.ClientToken)
-
 	values := make([]string, len(d.secrets))
-
+	keys := make([]string, len(d.secrets))
 	var n int
 	for _, secret := range d.secrets {
-		for _, v := range secret.env {
+		for k, v := range secret.env {
 			values[n] = v
+			keys[n] = k
 		}
 		n++
 	}
 
-	log.Println(fmt.Sprintf("Amount of secret groups in environment variables: %v", len(d.secrets)))
+	log.Println(fmt.Sprintf("Got %v environment variables", len(d.secrets)))
 
 	for i := 0; i < len(d.secrets); i++ {
 		req := d.client.NewRequest("GET", fmt.Sprintf("/v1/%s", values[i]))
@@ -409,8 +433,40 @@ func (d *data) getSecrets() error {
 		if err != nil {
 			log.Fatal(err)
 		}
-		d.secrets[i] = &secret{res: v}
+
+		var key, value string
+		for k, v := range v.Data {
+			if k == keys[i] {
+				key = k
+				value = v
+			}
+		}
+
+		d.secrets[i] = &secret{res: response{
+			Auth:          v.Auth,
+			LeaseID:       v.LeaseID,
+			LeaseDuration: v.LeaseDuration,
+			Data: map[string]string{
+				key: value,
+			},
+			Renewable: v.Renewable,
+		}}
 	}
+	return nil
+}
+
+func (d *data) saveSecrets() error {
+	var buf bytes.Buffer
+	for _, secret := range d.secrets {
+		for k, v := range secret.res.Data {
+			fmt.Fprintf(&buf, "%s=\"%s\"\n", strings.ToUpper(k), v)
+		}
+	}
+	err := ioutil.WriteFile(d.cmds.SecretSavePath, buf.Bytes(), 0644)
+	if err != nil {
+		return err
+	}
+	log.Println(fmt.Sprintf("Saved %v secrets", len(d.secrets)))
 	return nil
 }
 
@@ -458,21 +514,6 @@ func (d *data) renewAuthToken() (*vault.Renewer, error) {
 	return renewer, nil
 }
 
-func (d *data) saveSecrets() error {
-	var buf bytes.Buffer
-	for _, secret := range d.secrets {
-		for k, v := range secret.res.Data {
-			fmt.Fprintf(&buf, "%s=\"%s\"\n", strings.ToUpper(k), v)
-		}
-	}
-	err := ioutil.WriteFile(d.cmds.SecretSavePath, buf.Bytes(), 0644)
-	if err != nil {
-		return err
-	}
-	log.Println(fmt.Sprintf("Saved %v secret group variables", len(d.secrets)))
-	return nil
-}
-
 func (d *data) revokeAuthToken() error {
 	auth := d.client.Auth()
 	tokenAuth := auth.Token()
@@ -498,12 +539,41 @@ func getNamespace() (string, error) {
 	return string(ns), nil
 }
 
-func (d *data) saveTokenToKubeSecret() error {
+func (d *data) cleanupToken() error {
 	kubeConfig, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
 		return err
 	}
+	clientSet, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		return err
+	}
 
+	kubeAPI := clientSet.CoreV1()
+	ns, err := getNamespace()
+	if err != nil {
+		return err
+	}
+
+	secrets := kubeAPI.Secrets(ns)
+	_, err = secrets.Get(d.cmds.TokenSaveName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	err = secrets.Delete(d.cmds.TokenSaveName, &metav1.DeleteOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *data) saveToken() error {
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", "")
+	if err != nil {
+		return err
+	}
 	clientSet, err := kubernetes.NewForConfig(kubeConfig)
 	if err != nil {
 		return err
@@ -518,30 +588,30 @@ func (d *data) saveTokenToKubeSecret() error {
 	secrets := kubeAPI.Secrets(ns)
 	_, err = secrets.Create(&v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-vault-token", d.cmds.KubernetesRole),
+			Name:      d.cmds.TokenSaveName,
 			Namespace: ns,
 		},
 		Data: map[string][]byte{
 			"token": []byte(d.res.Auth.ClientToken),
 		},
 	})
-	if errors.IsAlreadyExists(err) {
-		m, err := json.Marshal([]map[string]interface{}{
-			map[string]interface{}{
-				"op":    "replace",
-				"path":  "/data/token",
-				"value": []byte(d.res.Auth.ClientToken),
-			},
-		})
-		if err != nil {
-			return err
-		}
+	// if errors.IsAlreadyExists(err) {
+	// 	m, err := json.Marshal([]map[string]interface{}{
+	// 		map[string]interface{}{
+	// 			"op":    "replace",
+	// 			"path":  "/data/token",
+	// 			"value": []byte(d.res.Auth.ClientToken),
+	// 		},
+	// 	})
+	// 	if err != nil {
+	// 		return err
+	// 	}
 
-		_, err = secrets.Patch(fmt.Sprintf("%s-vault-token", d.cmds.KubernetesRole), types.JSONPatchType, m)
-		if err != nil {
-			return err
-		}
-	}
+	// 	_, err = secrets.Patch(fmt.Sprintf("%s-vault-token", d.cmds.KubernetesRole), types.JSONPatchType, m)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
 	log.Info("Saved the token to Kubernetes secret")
 	return nil
 }
